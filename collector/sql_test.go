@@ -26,7 +26,7 @@ func TestSQLCollector(t *testing.T) {
 			Eval:      EvalAsMetric,
 		},
 	}
-	c := NewSQLCollector(q, mt)
+	c := NewSQLCollector(q, mt, 0)
 	ch := make(chan prometheus.Metric)
 	go func() {
 		c.Collect(ch)
