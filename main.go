@@ -8,8 +8,6 @@ import (
 	"github.com/tachesimazzoca/go-prompack/collector"
 )
 
-var registry *prometheus.Registry
-
 func metricHandler(registry *prometheus.Registry) http.Handler {
 	return promhttp.InstrumentMetricHandler(
 		registry, promhttp.HandlerFor(registry, promhttp.HandlerOpts{}),
@@ -25,7 +23,7 @@ func main() {
 
 	mt := collector.SQLMetrics{}
 
-	registry = prometheus.NewRegistry()
+	registry := prometheus.NewRegistry()
 	registry.MustRegister(collector.NewSQLCollector(q, mt))
 
 	http.Handle("/metrics", metricHandler(registry))
