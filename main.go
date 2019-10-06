@@ -36,38 +36,35 @@ func main() {
 			}, nil
 		},
 	)
-
-	registry := prometheus.NewRegistry()
+	querierMap := map[string]prompack.Querier{
+		"default": q,
+	}
 	labelNames := []string{"job"}
-	gvec := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "process_time",
-	}, labelNames)
-	registry.MustRegister(gvec)
+	collectorMap := map[string]prometheus.Collector{
+		"process_time": prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "process_time",
+		}, labelNames),
+		"process_time_histogram": prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "process_time_histogram",
+			Buckets: []float64{150, 850},
+		}, labelNames),
+		"process_time_summary": prometheus.NewSummaryVec(prometheus.SummaryOpts{
+			Name: "process_time_summary",
+		}, labelNames),
+	}
+	measurerOptsMap := map[string]prompack.MeasurerOpts{
+		"process_time": prompack.MeasurerOpts{
+			Name:        "process_time",
+			QuerierName: "default",
+			QueryString: "SELECT 1",
+			MetricNames: []string{"process_time", "process_time_histogram", "process_time_summary"},
+			Interval:    5 * time.Second,
+		},
+	}
 
-	hvec := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "process_time_histogram",
-		Buckets: []float64{150, 850},
-	}, labelNames)
-	registry.MustRegister(hvec)
-
-	svec := prometheus.NewSummaryVec(prometheus.SummaryOpts{
-		Name: "process_time_summary",
-	}, labelNames)
-	registry.MustRegister(svec)
-
-	m := prompack.NewSQLMeasurer(
-		q, "SELECT 1", func(lv prompack.LabeledValue) {
-			gvec.WithLabelValues(lv.LabelValues...).Set(lv.Value)
-			hvec.WithLabelValues(lv.LabelValues...).Observe(lv.Value)
-			svec.WithLabelValues(lv.LabelValues...).Observe(lv.Value)
-		})
-
-	go func() {
-		for {
-			m.Measure()
-			time.Sleep(5 * time.Second)
-		}
-	}()
+	ws := prompack.NewWorkspace(querierMap, collectorMap, measurerOptsMap)
+	registry := prometheus.NewRegistry()
+	ws.Start(registry)
 
 	http.Handle("/metrics", metricHandler(registry))
 	http.ListenAndServe("localhost:2112", nil)
