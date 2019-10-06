@@ -1,4 +1,4 @@
-package collector
+package prompack
 
 import (
 	"reflect"
@@ -9,24 +9,24 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func TestSQLCollector(t *testing.T) {
+func TestSQLMeasurer(t *testing.T) {
 	q := NewMockQuerier(
 		func(s string) ([][]string, error) {
 			return [][]string{
 				[]string{"3024", "foo", "1h"},
-				[]string{"534", "bar", "1h"},
 			}, nil
 		},
 	)
-	mt := SQLMetrics{
-		{
-			Desc:      prometheus.NewDesc("num_orders", "The number of placed orders in the last hour.", []string{"site", "interval"}, nil),
-			SQL:       "SELECT COUNT(1), site, '1h' FROM purchase_orders WHERE created_at < NOW() - INTERVAL 1 HOUR GROUP BY site",
-			ValueType: prometheus.GaugeValue,
-			Eval:      EvalAsMetric,
-		},
-	}
-	c := NewSQLCollector(q, mt, 0)
+	c := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "num_orders",
+		Help: "The number of placed orders in the last hour.",
+	}, []string{"site", "interval"})
+	m := NewSQLMeasurer(
+		q, "SELECT COUNT(1), site, '1h' FROM purchase_orders WHERE created_at < NOW() - INTERVAL 1 HOUR GROUP BY site",
+		func(lv LabeledValue) {
+			c.WithLabelValues(lv.LabelValues...).Set(lv.Value)
+		})
+	m.Measure()
 	ch := make(chan prometheus.Metric)
 	go func() {
 		c.Collect(ch)
@@ -35,7 +35,6 @@ func TestSQLCollector(t *testing.T) {
 
 	expected := []LabeledValue{
 		LabeledValue{Value: 3024, LabelValues: []string{"1h", "foo"}},
-		LabeledValue{Value: 534, LabelValues: []string{"1h", "bar"}},
 	}
 
 	for _, x := range expected {

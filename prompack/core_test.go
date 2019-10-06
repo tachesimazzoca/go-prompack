@@ -1,18 +1,18 @@
-package collector
+package prompack
 
 import (
 	"reflect"
 	"testing"
 )
 
-func TestEvalAsMetric(t *testing.T) {
+func TestEvalAsLabeledValues(t *testing.T) {
 	rs := [][]string{
 		[]string{"3024", "foo", "1h"},
 		[]string{"534", "bar", "1h"},
 		[]string{"1521", "foo", "30m"},
 		[]string{"231", "bar", "30m"},
 	}
-	lvs, err := EvalAsMetric(rs...)
+	lvs, err := evalAsLabeledValues(rs...)
 	if err != nil {
 		t.Error(err)
 	}

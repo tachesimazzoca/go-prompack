@@ -1,12 +1,14 @@
 package main
 
 import (
+	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/tachesimazzoca/go-prompack/collector"
+	"github.com/tachesimazzoca/go-prompack/prompack"
 )
 
 func metricHandler(registry *prometheus.Registry) http.Handler {
@@ -16,33 +18,56 @@ func metricHandler(registry *prometheus.Registry) http.Handler {
 }
 
 func main() {
-	q := collector.NewMockQuerier(
+	q := prompack.NewMockQuerier(
 		func(s string) ([][]string, error) {
-			t := time.Now()
 			return [][]string{
 				[]string{
-					t.Format("150405"),
-					time.Local.String(),
+					strconv.Itoa(rand.Intn(500) + rand.Intn(500)),
+					"foo",
 				},
 				[]string{
-					t.UTC().Format("150405"),
-					time.UTC.String(),
+					strconv.Itoa(rand.Intn(500) + rand.Intn(500)),
+					"bar",
+				},
+				[]string{
+					strconv.Itoa(rand.Intn(500) + rand.Intn(500)),
+					"baz",
 				},
 			}, nil
 		},
 	)
 
-	mt := collector.SQLMetrics{
-		{
-			Desc:      prometheus.NewDesc("now_hour_minute", "", []string{"timezone"}, nil),
-			SQL:       "SELECT 1",
-			ValueType: prometheus.GaugeValue,
-			Eval:      collector.EvalAsMetric,
-		},
-	}
-
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(collector.NewSQLCollector(q, mt, 5*time.Second))
+	labelNames := []string{"job"}
+	gvec := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "process_time",
+	}, labelNames)
+	registry.MustRegister(gvec)
+
+	hvec := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "process_time_histogram",
+		Buckets: []float64{150, 850},
+	}, labelNames)
+	registry.MustRegister(hvec)
+
+	svec := prometheus.NewSummaryVec(prometheus.SummaryOpts{
+		Name: "process_time_summary",
+	}, labelNames)
+	registry.MustRegister(svec)
+
+	m := prompack.NewSQLMeasurer(
+		q, "SELECT 1", func(lv prompack.LabeledValue) {
+			gvec.WithLabelValues(lv.LabelValues...).Set(lv.Value)
+			hvec.WithLabelValues(lv.LabelValues...).Observe(lv.Value)
+			svec.WithLabelValues(lv.LabelValues...).Observe(lv.Value)
+		})
+
+	go func() {
+		for {
+			m.Measure()
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	http.Handle("/metrics", metricHandler(registry))
 	http.ListenAndServe("localhost:2112", nil)

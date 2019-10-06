@@ -1,9 +1,7 @@
-package collector
+package prompack
 
 import (
 	"strconv"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type LabeledValue struct {
@@ -11,14 +9,7 @@ type LabeledValue struct {
 	LabelValues []string
 }
 
-type SQLMetrics []struct {
-	Desc      *prometheus.Desc
-	SQL       string
-	ValueType prometheus.ValueType
-	Eval      func(rs ...[]string) ([]LabeledValue, error)
-}
-
-func EvalAsMetric(rs ...[]string) ([]LabeledValue, error) {
+func evalAsLabeledValues(rs ...[]string) ([]LabeledValue, error) {
 	lvs := make([]LabeledValue, 0)
 	for _, r := range rs {
 		var v float64

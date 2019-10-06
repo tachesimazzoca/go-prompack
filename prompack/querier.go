@@ -1,4 +1,4 @@
-package collector
+package prompack
 
 import (
 	"context"
