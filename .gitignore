@@ -2,4 +2,5 @@
 
 /vendor
 
-Gopkg.lock
+/Gopkg.lock
+/config.yml

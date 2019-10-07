@@ -1,14 +1,21 @@
 package main
 
 import (
-	"math/rand"
+	"context"
+	"flag"
+	"io/ioutil"
+	"log"
 	"net/http"
-	"strconv"
-	"time"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/tachesimazzoca/go-prompack/prompack"
+	"github.com/tachesimazzoca/go-prompack/core"
+	"github.com/tachesimazzoca/go-prompack/exporter"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func metricHandler(registry *prometheus.Registry) http.Handler {
@@ -17,55 +24,70 @@ func metricHandler(registry *prometheus.Registry) http.Handler {
 	)
 }
 
+func must(b bool, v ...interface{}) {
+	if !b {
+		log.Fatal(v)
+	}
+}
+
 func main() {
-	q := prompack.NewMockQuerier(
-		func(s string) ([][]string, error) {
-			return [][]string{
-				[]string{
-					strconv.Itoa(rand.Intn(500) + rand.Intn(500)),
-					"foo",
-				},
-				[]string{
-					strconv.Itoa(rand.Intn(500) + rand.Intn(500)),
-					"bar",
-				},
-				[]string{
-					strconv.Itoa(rand.Intn(500) + rand.Intn(500)),
-					"baz",
-				},
-			}, nil
-		},
-	)
-	querierMap := map[string]prompack.Querier{
-		"default": q,
-	}
-	labelNames := []string{"job"}
-	collectorMap := map[string]prometheus.Collector{
-		"process_time": prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "process_time",
-		}, labelNames),
-		"process_time_histogram": prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "process_time_histogram",
-			Buckets: []float64{150, 850},
-		}, labelNames),
-		"process_time_summary": prometheus.NewSummaryVec(prometheus.SummaryOpts{
-			Name: "process_time_summary",
-		}, labelNames),
-	}
-	measurerOptsMap := map[string]prompack.MeasurerOpts{
-		"process_time": prompack.MeasurerOpts{
-			Name:        "process_time",
-			QuerierName: "default",
-			QueryString: "SELECT 1",
-			MetricNames: []string{"process_time", "process_time_histogram", "process_time_summary"},
-			Interval:    5 * time.Second,
-		},
-	}
+	var err error
 
-	ws := prompack.NewWorkspace(querierMap, collectorMap, measurerOptsMap)
+	flgs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	cfgPath := flgs.String("c", "config.yml", "config")
+	err = flgs.Parse(os.Args[1:])
+	must(err == nil, err)
+
+	yml, err := ioutil.ReadFile(*cfgPath)
+	must(err == nil, err)
+
+	cfg, err := core.NewExporterConfigFromYaml(yml)
+	must(err == nil, err)
+
+	ep, err := exporter.NewExporter(cfg)
+	must(err == nil, err)
+
+	ctx := context.Background()
 	registry := prometheus.NewRegistry()
-	ws.Start(registry)
 
-	http.Handle("/metrics", metricHandler(registry))
-	http.ListenAndServe("localhost:2112", nil)
+	err = ep.Start(ctx, registry)
+	must(err == nil, err)
+
+	handler := http.NewServeMux()
+	handler.Handle("/metrics", metricHandler(registry))
+	srv := http.Server{
+		Addr:    cfg.Server.Addr,
+		Handler: handler,
+	}
+
+	log.Printf("Waiting for SIGTERM to stop server")
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+	cancel := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-term:
+				log.Println("Received SIGTERM, exiting gracefully...")
+				if err := ep.Stop(); err != nil {
+					log.Printf("(%p).Stop: %v", ep, err)
+				}
+				log.Printf("Stopping server: %s", srv.Addr)
+				if err := srv.Shutdown(ctx); err != nil {
+					log.Printf("srv.Shutdown returned error: %v", err)
+				} else {
+					log.Printf("srv.Shutdown successfully")
+				}
+				close(cancel)
+				return
+			}
+		}
+	}()
+
+	log.Printf("Server started: %s", srv.Addr)
+	err = srv.ListenAndServe()
+	must(err == http.ErrServerClosed, err)
+
+	<-cancel
+	log.Printf("Server stopped: %s", srv.Addr)
 }

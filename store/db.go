@@ -1,37 +1,27 @@
-package prompack
+package store
 
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"sync"
 )
 
-type Querier interface {
-	Query(s string) ([][]string, error)
+type dbStore struct {
+	db     *sql.DB
+	closed bool
+	mux    sync.Mutex
 }
 
-type mockQuerier struct {
-	f func(s string) ([][]string, error)
+func NewDBStore(db *sql.DB) *dbStore {
+	return &dbStore{db: db, closed: false}
 }
 
-func NewMockQuerier(f func(s string) ([][]string, error)) *mockQuerier {
-	return &mockQuerier{f: f}
-}
-
-func (q *mockQuerier) Query(s string) ([][]string, error) {
-	return q.f(s)
-}
-
-type dbQuerier struct {
-	db *sql.DB
-}
-
-func NewDBQuerier(db *sql.DB) *dbQuerier {
-	return &dbQuerier{db: db}
-}
-
-func (q *dbQuerier) Query(s string) ([][]string, error) {
-	ctx := context.TODO()
-	conn, err := q.db.Conn(ctx)
+func (st *dbStore) Query(ctx context.Context, s string) ([][]string, error) {
+	if st.closed {
+		return nil, errors.New("already closed")
+	}
+	conn, err := st.db.Conn(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -64,4 +54,11 @@ func (q *dbQuerier) Query(s string) ([][]string, error) {
 		xs = append(xs, ys)
 	}
 	return xs, nil
+}
+
+func (st *dbStore) Close() error {
+	defer st.mux.Unlock()
+	st.mux.Lock()
+	st.closed = true
+	return st.db.Close()
 }

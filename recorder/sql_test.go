@@ -1,16 +1,19 @@
-package prompack
+package recorder
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
+	"github.com/tachesimazzoca/go-prompack/core"
+	"github.com/tachesimazzoca/go-prompack/store"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func TestSQLMeasurer(t *testing.T) {
-	q := NewMockQuerier(
+func TestSQLRecorder(t *testing.T) {
+	st := store.NewMockStore(
 		func(s string) ([][]string, error) {
 			return [][]string{
 				[]string{"3024", "foo", "1h"},
@@ -21,20 +24,21 @@ func TestSQLMeasurer(t *testing.T) {
 		Name: "num_orders",
 		Help: "The number of placed orders in the last hour.",
 	}, []string{"site", "interval"})
-	m := NewSQLMeasurer(
-		q, "SELECT COUNT(1), site, '1h' FROM purchase_orders WHERE created_at < NOW() - INTERVAL 1 HOUR GROUP BY site",
-		func(lv LabeledValue) {
-			c.WithLabelValues(lv.LabelValues...).Set(lv.Value)
+	rec := NewSQLRecorder(
+		st, "SELECT COUNT(1), site, '1h' FROM purchase_orders"+
+			" WHERE created_at < NOW() - INTERVAL 1 HOUR GROUP BY site",
+		func(mv core.MetricValue) {
+			c.WithLabelValues(mv.LabelValues...).Set(mv.Value)
 		})
-	m.Measure()
+	rec.Record(context.TODO())
 	ch := make(chan prometheus.Metric)
 	go func() {
 		c.Collect(ch)
 		close(ch)
 	}()
 
-	expected := []LabeledValue{
-		LabeledValue{Value: 3024, LabelValues: []string{"1h", "foo"}},
+	expected := []core.MetricValue{
+		core.MetricValue{Value: 3024, LabelValues: []string{"1h", "foo"}},
 	}
 
 	for _, x := range expected {
