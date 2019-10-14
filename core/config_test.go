@@ -26,7 +26,15 @@ metrics:
   - name: bar
     help: Bar is the second metric.
     type: histogram
+    buckets: [0.1, 3.25, 5, 8.5, 10]
     labelNames: [num_processes]
+  - name: baz
+    help: Baz is the third metric.
+    type: summary
+    objectives:
+      0.5: 0.05
+      0.9: 0.01
+      0.99: 0.001
 recorders:
   - type: sql
     storeName: default
@@ -62,7 +70,18 @@ recorders:
 				Type:       "histogram",
 				Name:       "bar",
 				Help:       "Bar is the second metric.",
+				Buckets:    []float64{0.1, 3.25, 5, 8.5, 10},
 				LabelNames: []string{"num_processes"},
+			},
+			MetricConfig{
+				Type: "summary",
+				Name: "baz",
+				Help: "Baz is the third metric.",
+				Objectives: map[float64]float64{
+					0.5:  0.05,
+					0.9:  0.01,
+					0.99: 0.001,
+				},
 			},
 		},
 		Recorders: []RecorderConfig{

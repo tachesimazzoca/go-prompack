@@ -68,13 +68,15 @@ func NewExporter(cfg core.ExporterConfig) (*Exporter, error) {
 			}, v.LabelNames)
 		case "histogram":
 			cm[v.Name] = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-				Name: v.Name,
-				Help: v.Help,
+				Name:    v.Name,
+				Help:    v.Help,
+				Buckets: v.Buckets,
 			}, v.LabelNames)
 		case "summary":
 			cm[v.Name] = prometheus.NewSummaryVec(prometheus.SummaryOpts{
-				Name: v.Name,
-				Help: v.Help,
+				Name:       v.Name,
+				Help:       v.Help,
+				Objectives: v.Objectives,
 			}, v.LabelNames)
 		default:
 			return nil, errors.New("metrics.type must be in (counter|gauge|histogram|summary)")

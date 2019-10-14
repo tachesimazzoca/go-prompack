@@ -19,6 +19,8 @@ type MetricConfig struct {
 	Type       string
 	Name       string
 	Help       string
+	Buckets    []float64
+	Objectives map[float64]float64
 	LabelNames []string `yaml:"labelNames"`
 }
 
