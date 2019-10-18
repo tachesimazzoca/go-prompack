@@ -26,7 +26,7 @@ func metricHandler(registry *prometheus.Registry) http.Handler {
 
 func must(b bool, v ...interface{}) {
 	if !b {
-		log.Fatal(v)
+		log.Fatal(v...)
 	}
 }
 
