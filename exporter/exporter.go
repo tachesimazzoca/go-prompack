@@ -93,24 +93,9 @@ func NewExporter(cfg core.ExporterConfig) (*Exporter, error) {
 		if st, ok := sm[v.StoreName]; !ok {
 			return nil, errors.New(fmt.Sprintf("store %s is missing", v.StoreName))
 		} else {
-			f := func(mv core.MetricValue) {
-				for _, n := range v.MetricNames {
-					switch c := cm[n].(type) {
-					case *prometheus.CounterVec:
-						c.WithLabelValues(mv.LabelValues...).Add(mv.Value)
-					case *prometheus.GaugeVec:
-						c.WithLabelValues(mv.LabelValues...).Set(mv.Value)
-					case *prometheus.HistogramVec:
-						c.WithLabelValues(mv.LabelValues...).Observe(mv.Value)
-					case *prometheus.SummaryVec:
-						c.WithLabelValues(mv.LabelValues...).Observe(mv.Value)
-					default:
-					}
-				}
-			}
 			switch v.Type {
 			case "sql":
-				recs[i] = recorder.NewSQLRecorder(st, v.Query, f)
+				recs[i] = recorder.NewSQLRecorder(st, v.Query, createRecordF(cm, v.MetricNames))
 			default:
 				return nil, errors.New("recorders[*].type must be in (sql)")
 			}
@@ -118,7 +103,6 @@ func NewExporter(cfg core.ExporterConfig) (*Exporter, error) {
 		ts[i] = time.NewTicker(v.Interval)
 		qs[i] = make(chan struct{})
 	}
-
 	return &Exporter{
 		storeMap:     sm,
 		collectorMap: cm,
@@ -186,4 +170,22 @@ func (ep *Exporter) Stop() error {
 		log.Printf("Store closed: %s", k)
 	}
 	return nil
+}
+
+func createRecordF(cm map[string]prometheus.Collector, metricNames []string) func(core.MetricValue) {
+	return func(mv core.MetricValue) {
+		for _, n := range metricNames {
+			switch c := cm[n].(type) {
+			case *prometheus.CounterVec:
+				c.WithLabelValues(mv.LabelValues...).Add(mv.Value)
+			case *prometheus.GaugeVec:
+				c.WithLabelValues(mv.LabelValues...).Set(mv.Value)
+			case *prometheus.HistogramVec:
+				c.WithLabelValues(mv.LabelValues...).Observe(mv.Value)
+			case *prometheus.SummaryVec:
+				c.WithLabelValues(mv.LabelValues...).Observe(mv.Value)
+			default:
+			}
+		}
+	}
 }
